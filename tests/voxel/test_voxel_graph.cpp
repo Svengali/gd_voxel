@@ -762,7 +762,7 @@ void test_voxel_graph_generate_block_with_input_sdf() {
 			VoxelBuffer buffer(VoxelBuffer::ALLOCATOR_DEFAULT);
 			buffer.create(Vector3i(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE));
 			const VoxelBuffer::ChannelId channel = VoxelBuffer::CHANNEL_SDF;
-			const VoxelBuffer::Depth depth = buffer.get_channel_depth(channel);
+			// const VoxelBuffer::Depth depth = buffer.get_channel_depth(channel);
 			for (int z = 0; z < buffer.get_size().z; ++z) {
 				for (int x = 0; x < buffer.get_size().x; ++x) {
 					for (int y = 0; y < buffer.get_size().y; ++y) {
@@ -1015,7 +1015,7 @@ void test_voxel_graph_functions_misc() {
 				//   Y(unused)
 				//
 				const uint32_t n_x = g.create_node(VoxelGraphFunction::NODE_INPUT_X, Vector2());
-				const uint32_t n_y = g.create_node(VoxelGraphFunction::NODE_INPUT_Y, Vector2());
+				/*const uint32_t n_y =*/g.create_node(VoxelGraphFunction::NODE_INPUT_Y, Vector2());
 				const uint32_t n_z = g.create_node(VoxelGraphFunction::NODE_INPUT_Z, Vector2());
 				const uint32_t n_add1 = g.create_node(VoxelGraphFunction::NODE_ADD, Vector2());
 				const uint32_t n_add2 = g.create_node(VoxelGraphFunction::NODE_ADD, Vector2());
@@ -1039,7 +1039,7 @@ void test_voxel_graph_functions_misc() {
 			Ref<VoxelGeneratorGraph> generator;
 			generator.instantiate();
 			//      X
-			//       \ 
+			//       \
 			//  Z --- Func --- OutSDF
 			//
 			{
@@ -1462,8 +1462,8 @@ void test_voxel_graph_unused_single_texture_output() {
 
 		const uint32_t n_sub = func->create_node(VoxelGraphFunction::NODE_SUBTRACT, Vector2());
 
-		const uint32_t n_out_single_texture =
-				func->create_node(VoxelGraphFunction::NODE_OUTPUT_SINGLE_TEXTURE, Vector2());
+		// const uint32_t n_out_single_texture =
+		func->create_node(VoxelGraphFunction::NODE_OUTPUT_SINGLE_TEXTURE, Vector2());
 
 		func->add_connection(n_plane, 0, n_sub, 0);
 		func->add_connection(n_noise, 0, n_mul, 0);
@@ -1568,7 +1568,7 @@ void test_voxel_graph_spots2d_optimized_execution_map() {
 		func->set_node_default_input(n7_mul, 1, 1.f); // b
 
 		const uint32_t n9_sub = func->create_node(VoxelGraphFunction::NODE_SUBTRACT, Vector2(), 9);
-		const uint32_t n11_fnl2 = func->create_node(VoxelGraphFunction::NODE_FAST_NOISE_2D, Vector2(), 11);
+		/*const uint32_t n11_fnl2 =*/func->create_node(VoxelGraphFunction::NODE_FAST_NOISE_2D, Vector2(), 11);
 		const uint32_t n12_out_tex = func->create_node(VoxelGraphFunction::NODE_OUTPUT_SINGLE_TEXTURE, Vector2(), 12);
 
 		const uint32_t n13_select1 = func->create_node(VoxelGraphFunction::NODE_SELECT, Vector2(), 13);
@@ -2088,15 +2088,15 @@ void test_image_range_grid() {
 	using namespace math;
 
 	struct L {
-		static Color get_pixel_repeat(const Image &im, int x, int y) {
+		static Color get_pixel_repeat(const Image &im, const int x, const int y) {
 			return im.get_pixel(math::wrap(x, im.get_width()), math::wrap(y, im.get_height()));
 		}
 
-		static Interval get_range_repeat(const Image &im, Interval x, Interval y) {
-			const int min_x = Math::floor(x.min);
-			const int min_y = Math::floor(y.min);
-			const int max_x = Math::ceil(x.max);
-			const int max_y = Math::ceil(y.max);
+		static Interval get_range_repeat(const Image &im, const Interval x_range, const Interval y_range) {
+			const int min_x = Math::floor(x_range.min);
+			const int min_y = Math::floor(y_range.min);
+			const int max_x = Math::ceil(x_range.max);
+			const int max_y = Math::ceil(y_range.max);
 
 			Interval i = Interval::from_single_value(get_pixel_repeat(im, min_x, min_y).r);
 			for (int y = min_y; y < max_y; ++y) {
@@ -2109,7 +2109,7 @@ void test_image_range_grid() {
 			return i;
 		}
 
-		static void test_range(const Image &im, const ImageRangeGrid &range_grid, Interval x, Interval y) {
+		static void test_range(const Image &im, const ImageRangeGrid &range_grid, const Interval x, const Interval y) {
 			const Interval accurate_range = L::get_range_repeat(im, x, y);
 			const Interval estimated_range = range_grid.get_range_repeat(x, y);
 			ZN_TEST_ASSERT(estimated_range.contains(accurate_range));
@@ -2316,7 +2316,7 @@ void test_voxel_graph_4_default_weights() { // Related to issue #686
 			const uint32_t ew = buffer.get_voxel(10, 0, 0, VoxelBuffer::CHANNEL_WEIGHTS);
 
 			const FixedArray<uint8_t, 4> indices = decode_indices_from_packed_u16(ei);
-			const FixedArray<uint8_t, 4> weights = decode_weights_from_packed_u16(ew);
+			// const FixedArray<uint8_t, 4> weights = decode_weights_from_packed_u16(ew);
 
 			ZN_TEST_ASSERT(indices[0] == 0 && indices[1] == 1 && indices[2] == 2 && indices[3] == 3);
 			ZN_TEST_ASSERT(ew == test_ew);
