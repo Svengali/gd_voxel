@@ -1899,7 +1899,7 @@ void test_voxel_graph_function_execute() {
 	}
 
 	const Vector3i block_size(16, 18, 20);
-	const int volume = Vector3iUtil::get_volume(block_size);
+	const size_t volume = Vector3iUtil::get_volume_u64(block_size);
 
 	StdVector<float> x_buffer;
 	StdVector<float> y_buffer;
@@ -1929,7 +1929,7 @@ void test_voxel_graph_function_execute() {
 	Span<float> outputs = to_span(sd_buffer);
 	function->execute(Span<Span<float>>(inputs, 3), Span<Span<float>>(&outputs, 1));
 
-	for (int i = 0; i < volume; ++i) {
+	for (size_t i = 0; i < volume; ++i) {
 		const float obtained_result = sd_buffer[i];
 		const float expected_result = Math::sin(x_buffer[i]) + Math::cos(z_buffer[i]) + y_buffer[i];
 		ZN_TEST_ASSERT(Math::is_equal_approx(obtained_result, expected_result));
@@ -2327,6 +2327,35 @@ void test_voxel_graph_4_default_weights() { // Related to issue #686
 	L::test(0.5, 0.2, 0.4, 0.8);
 	L::test(0.5, 0.0, 0.25, 1.0);
 	L::test(0.5, 0.2, 0.4, 0.8);
+}
+
+void test_voxel_graph_empty_image() {
+	// This used to crash
+
+	Ref<VoxelGeneratorGraph> generator;
+	generator.instantiate();
+
+	VoxelGraphFunction &g = **generator->get_main_function();
+
+	const uint32_t n_x = g.create_node(VoxelGraphFunction::NODE_INPUT_X);
+	const uint32_t n_z = g.create_node(VoxelGraphFunction::NODE_INPUT_Z);
+	const uint32_t n_image = g.create_node(VoxelGraphFunction::NODE_IMAGE_2D);
+	const uint32_t n_out_sdf = g.create_node(VoxelGraphFunction::NODE_OUTPUT_SDF);
+
+	Ref<Image> image;
+	image.instantiate();
+	g.set_node_param(n_image, 0, image);
+
+	g.add_connection(n_x, 0, n_image, 0);
+	g.add_connection(n_z, 0, n_image, 1);
+	g.add_connection(n_image, 0, n_out_sdf, 0);
+
+	CompilationResult result = generator->compile(false);
+
+	// Try to generate before asserting compilation result. It should fail without crashing.
+	generator->generate_single(Vector3i(405, 2, 305), VoxelBuffer::CHANNEL_SDF);
+
+	ZN_TEST_ASSERT(result.success == false);
 }
 
 } // namespace zylann::voxel::tests

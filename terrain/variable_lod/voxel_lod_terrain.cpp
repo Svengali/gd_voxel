@@ -2789,6 +2789,11 @@ void VoxelLodTerrain::get_configuration_warnings(PackedStringArray &warnings) co
 			warnings.append(String("`use_gpu_generation` is enabled, but {0} does not support running on the GPU.")
 									.format(varray(generator->get_class())));
 		}
+		if (!VoxelEngine::get_singleton().has_rendering_device()) {
+			warnings.append(String("`use_gpu_generation` is enabled, but the selected renderer does not support the "
+								   "RenderingDevice API ({0}).")
+									.format(varray(ZN_CLASS_NAME_C(VoxelLodTerrain), get_current_rendering_method())));
+		}
 	}
 
 	if (mesher.is_valid()) {
@@ -3465,7 +3470,7 @@ Array VoxelLodTerrain::_b_debug_print_sdf_top_down(Vector3i center, Vector3i ext
 	for (unsigned int lod_index = 0; lod_index < lod_count; ++lod_index) {
 		const Box3i world_box = Box3i::from_center_extents(center >> lod_index, extents >> lod_index);
 
-		if (Vector3iUtil::get_volume(world_box.size) == 0) {
+		if (Vector3iUtil::get_volume_u64(world_box.size) == 0) {
 			continue;
 		}
 
