@@ -183,8 +183,10 @@ struct MaterialProcessorNull {
 	// Called for every 2x3x3 transition cell containing triangles.
 	// Such cells are actually in 2D data-wise, so corners are the same value, so only 9 are passed in.
 	// The returned value is used to determine if the next cell can re-use vertices from previous cells, when equal.
-	inline uint32_t on_transition_cell(const FixedArray<uint32_t, 9> &corner_voxel_indices, const uint8_t case_code)
-			const {
+	inline uint32_t on_transition_cell(
+			const FixedArray<uint32_t, 9> &corner_voxel_indices,
+			const uint8_t case_code
+	) const {
 		return 0;
 	}
 	// Called one or more times after each `on_cell` for every new vertex, to interpolate and add material data
@@ -1231,10 +1233,14 @@ inline void build_regular_mesh_dispatch_sd(
 			);
 		} break;
 
-		case VoxelBuffer::DEPTH_64_BIT:
-			ZN_PRINT_ERROR("Double-precision SDF channel is not supported");
-			// Not worth growing executable size for relatively pointless double-precision sdf
-			break;
+		case VoxelBuffer::DEPTH_64_BIT: {
+			static bool s_once = false;
+			if (s_once == false) {
+				s_once = true;
+				ZN_PRINT_ERROR("Double-precision SDF channel is not supported");
+				// Not worth growing executable size for relatively pointless double-precision sdf
+			}
+		} break;
 
 		default:
 			ZN_PRINT_ERROR("Invalid channel");

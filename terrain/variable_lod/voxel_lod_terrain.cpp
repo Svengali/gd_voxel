@@ -1149,9 +1149,11 @@ Vector3 VoxelLodTerrain::get_local_viewer_pos() const {
 	Vector3 pos = _update_data->state.lods[0].last_viewer_data_block_pos << get_data_block_size_pow2();
 
 	// TODO Support for multiple viewers, this is a placeholder implementation
-	VoxelEngine::get_singleton().for_each_viewer([&pos](ViewerID id, const VoxelEngine::Viewer &viewer) {
-		pos = viewer.world_position;
-	});
+	VoxelEngine::get_singleton().for_each_viewer( //
+			[&pos](ViewerID id, const VoxelEngine::Viewer &viewer) { //
+				pos = viewer.world_position;
+			}
+	);
 
 	const Transform3D world_to_local = get_global_transform().affine_inverse();
 	pos = world_to_local.xform(pos);
@@ -1471,6 +1473,7 @@ void VoxelLodTerrain::apply_main_thread_update_tasks() {
 							);
 
 							item.mesh_instance.create();
+							item.mesh_instance.set_interpolated(false);
 							item.mesh_instance.set_mesh(mesh_block->get_mesh());
 							item.mesh_instance.set_gi_mode(get_gi_mode());
 							item.mesh_instance.set_transform(
@@ -1560,6 +1563,7 @@ void VoxelLodTerrain::apply_main_thread_update_tasks() {
 						// 		VoxelStringNames::get_singleton().u_lod_fade, Vector2(item.progress, 0.f));
 
 						item.mesh_instance.create();
+						item.mesh_instance.set_interpolated(false);
 						item.mesh_instance.set_mesh(block->get_mesh());
 						item.mesh_instance.set_gi_mode(get_gi_mode());
 						item.mesh_instance.set_transform(volume_transform * Transform3D(Basis(), item.local_position));
@@ -1737,6 +1741,32 @@ void VoxelLodTerrain::apply_data_block_response(VoxelEngine::BlockDataOutput &ob
 	// }
 }
 
+inline void set_block_collision_shape(
+		const VoxelLodTerrain &terrain,
+		VoxelMeshBlockVLT &block,
+		Ref<Shape3D> shape,
+		const uint64_t now
+) {
+	bool debug_collisions = false;
+	if (terrain.is_inside_tree()) {
+		const SceneTree *scene_tree = terrain.get_tree();
+#if DEBUG_ENABLED
+		if (shape.is_valid()) {
+			const Color debug_color = zylann::godot::get_shape_3d_default_color(*scene_tree);
+			zylann::godot::set_shape_3d_debug_color(**shape, debug_color);
+		}
+#endif
+		debug_collisions = scene_tree->is_debugging_collisions_hint();
+	}
+
+	block.set_collision_shape(shape, debug_collisions, &terrain, terrain.get_collision_margin());
+
+	block.set_collision_layer(terrain.get_collision_layer());
+	block.set_collision_mask(terrain.get_collision_mask());
+	block.last_collider_update_time = now;
+	block.deferred_collider_data.reset();
+}
+
 void VoxelLodTerrain::apply_mesh_update(VoxelEngine::BlockMeshOutput &ob) {
 	// The following is done on the main thread because Godot doesn't really support everything done here.
 	// Building meshes can be done in the threaded task when using Vulkan, but not OpenGL.
@@ -1744,6 +1774,10 @@ void VoxelLodTerrain::apply_mesh_update(VoxelEngine::BlockMeshOutput &ob) {
 	// Building collision shapes in threads efficiently is not supported.
 	ZN_PROFILE_SCOPE();
 
+	// TODO This spams in the editor upon opening a project, when more than one scene was open with a terrain.
+	// I suspect this is because one scene opens, then another opens and takes precedence. This causes the first scene
+	// to be removed from the scene tree, yet it already has started loading so all mesh update results come up too
+	// late...
 	ERR_FAIL_COND(!is_inside_tree());
 
 	CRASH_COND(_update_data == nullptr);
@@ -1815,8 +1849,10 @@ void VoxelLodTerrain::apply_mesh_update(VoxelEngine::BlockMeshOutput &ob) {
 		// Notify streaming system so it can subdivide LODs as they load
 		VoxelLodTerrainUpdateData::ClipboxStreamingState &cs = _update_data->state.clipbox_streaming;
 		MutexLock mlock(cs.loaded_mesh_blocks_mutex);
-		cs.loaded_mesh_blocks.push_back(VoxelLodTerrainUpdateData::LoadedMeshBlockEvent{
-				ob.position, ob.lod, first_visual_load, first_collision_load });
+		cs.loaded_mesh_blocks.push_back(
+				VoxelLodTerrainUpdateData::LoadedMeshBlockEvent{
+						ob.position, ob.lod, first_visual_load, first_collision_load }
+		);
 	}
 
 	// -------- Part where we invoke Godot functions ---------
@@ -2017,14 +2053,8 @@ void VoxelLodTerrain::apply_mesh_update(VoxelEngine::BlockMeshOutput &ob) {
 			static_cast<int>(now - block->last_collider_update_time) > _collision_update_delay) {
 			ZN_ASSERT(_mesher.is_valid());
 			Ref<Shape3D> collision_shape = make_collision_shape_from_mesher_output(ob.surfaces, **_mesher);
-			const bool debug_collisions = is_inside_tree() ? get_tree()->is_debugging_collisions_hint() : false;
-			block->set_collision_shape(collision_shape, debug_collisions, this, _collision_margin);
-
-			block->set_collision_layer(_collision_layer);
-			block->set_collision_mask(_collision_mask);
+			set_block_collision_shape(*this, *block, collision_shape, now);
 			block->set_collision_enabled(collision_active);
-			block->last_collider_update_time = now;
-			block->deferred_collider_data.reset();
 
 		} else {
 			if (block->deferred_collider_data == nullptr) {
@@ -2037,6 +2067,7 @@ void VoxelLodTerrain::apply_mesh_update(VoxelEngine::BlockMeshOutput &ob) {
 
 	// This is done regardless in case a MeshInstance or collision body is created, because it will then set its
 	// position
+	// TODO Godot prevents this from working when outside of the scene tree!
 	block->set_parent_transform(get_global_transform());
 
 	if (ob.detail_textures != nullptr && visual_expected) {
@@ -2270,13 +2301,7 @@ void VoxelLodTerrain::process_deferred_collision_updates(uint32_t timeout_msec) 
 							make_collision_shape_from_mesher_output(*block->deferred_collider_data, **_mesher);
 				}
 
-				block->set_collision_shape(
-						collision_shape, get_tree()->is_debugging_collisions_hint(), this, _collision_margin
-				);
-				block->set_collision_layer(_collision_layer);
-				block->set_collision_mask(_collision_mask);
-				block->last_collider_update_time = now;
-				block->deferred_collider_data.reset();
+				set_block_collision_shape(*this, *block, collision_shape, now);
 
 				unordered_remove(deferred_collision_updates, i);
 				--i;
@@ -2759,6 +2784,18 @@ bool VoxelLodTerrain::get_generator_use_gpu() const {
 	return _update_data->settings.generator_use_gpu;
 }
 
+void VoxelLodTerrain::set_cache_generated_blocks(const bool enabled) {
+	if (enabled == _update_data->settings.cache_generated_blocks) {
+		return;
+	}
+	_update_data->settings.cache_generated_blocks = enabled;
+	update_configuration_warnings();
+}
+
+bool VoxelLodTerrain::get_cache_generated_blocks() const {
+	return _update_data->settings.cache_generated_blocks;
+}
+
 #ifdef TOOLS_ENABLED
 
 void VoxelLodTerrain::get_configuration_warnings(PackedStringArray &warnings) const {
@@ -2774,6 +2811,22 @@ void VoxelLodTerrain::get_configuration_warnings(PackedStringArray &warnings) co
 		warnings.append(
 				ZN_TTR("The assigned {0} does not support LOD.").format(varray(VoxelGenerator::get_class_static()))
 		);
+	}
+
+	Ref<VoxelStream> stream = get_stream();
+	if (stream.is_valid()) {
+		if (stream->get_save_generator_output()) {
+			if (is_full_load_mode_enabled()) {
+				warnings.append(ZN_TTR("The assigned {0} is set to save generator output, but it is not supported when "
+									   "`full_load_mode` is enabled.")
+										.format(varray(VoxelStream::get_class_static())));
+			}
+			if (get_cache_generated_blocks() == false) {
+				warnings.append(ZN_TTR("The assigned {0} is set to save generator output, but it is not supported when "
+									   "`cache_generated_blocks` is disabled.")
+										.format(varray(VoxelStream::get_class_static())));
+			}
+		}
 	}
 
 	Ref<VoxelMesher> mesher = get_mesher();
@@ -2792,7 +2845,7 @@ void VoxelLodTerrain::get_configuration_warnings(PackedStringArray &warnings) co
 		if (!VoxelEngine::get_singleton().has_rendering_device()) {
 			warnings.append(String("`use_gpu_generation` is enabled, but the selected renderer does not support the "
 								   "RenderingDevice API ({0}).")
-									.format(varray(ZN_CLASS_NAME_C(VoxelLodTerrain), get_current_rendering_method())));
+									.format(varray(get_current_rendering_method())));
 		}
 	}
 
@@ -3708,6 +3761,9 @@ void VoxelLodTerrain::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_streaming_system", "system"), &Self::set_streaming_system);
 	ClassDB::bind_method(D_METHOD("get_streaming_system"), &Self::get_streaming_system);
 
+	ClassDB::bind_method(D_METHOD("set_cache_generated_blocks", "enabled"), &Self::set_cache_generated_blocks);
+	ClassDB::bind_method(D_METHOD("get_cache_generated_blocks"), &Self::get_cache_generated_blocks);
+
 	// Debug
 
 	ClassDB::bind_method(D_METHOD("get_statistics"), &Self::_b_get_statistics);
@@ -3774,9 +3830,7 @@ void VoxelLodTerrain::_bind_methods() {
 					Variant::OBJECT,
 					"material",
 					PROPERTY_HINT_RESOURCE_TYPE,
-					String("{0},{1}").format(
-							varray(BaseMaterial3D::get_class_static(), ShaderMaterial::get_class_static())
-					)
+					zylann::godot::MATERIAL_3D_PROPERTY_HINT_STRING
 			),
 			"set_material",
 			"get_material"
@@ -3850,6 +3904,11 @@ void VoxelLodTerrain::_bind_methods() {
 			PropertyInfo(Variant::BOOL, "full_load_mode_enabled"),
 			"set_full_load_mode_enabled",
 			"is_full_load_mode_enabled"
+	);
+	ADD_PROPERTY(
+			PropertyInfo(Variant::BOOL, "cache_generated_blocks"),
+			"set_cache_generated_blocks",
+			"get_cache_generated_blocks"
 	);
 	ADD_PROPERTY(
 			PropertyInfo(Variant::BOOL, "threaded_update_enabled"),
