@@ -124,7 +124,7 @@ There are development builds of the GDExtension available on [Github Actions](ht
 ### Building yourself
 
 If the provided binaries don't include the platform or options you need, or if you need customizations, you can still make your own build.
-See [VoxelGeneratorNoise2D](module_development.md#gdextension)
+See [Module Development](module_development.md#gdextension)
 
 
 ### Exporting
@@ -135,7 +135,6 @@ You can check which platforms are provided by the extension in the config file a
 
 - Windows x86_64
 - Linux x86_64
-- Linux arm64
 - Mac OS x86_64 (universal)
 - Mac OS arm64 (universal)
 - iOS arm64
